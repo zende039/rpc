@@ -10,7 +10,7 @@
 using namespace lmt;
 
 TeleCarlaRpcClient::TeleCarlaRpcClient(ros::NodeHandle& nh, ros::NodeHandle& pnh)
-    : host_("10.131.222.209"),  // Set the server IP here
+    : host_("15.181.49.61"),  // Set the server IP here
       port_(pnh.param("rpc_port", 2002)),
       client_(host_, port_)
 {
@@ -29,7 +29,7 @@ TeleCarlaRpcClient::TeleCarlaRpcClient(ros::NodeHandle& nh, ros::NodeHandle& pnh
 
     const auto prefix = "/carla/" + pnh.param("role_name", std::string("ego_vehicle"));
 
-    // Timestamp and send enable_autopilot message
+    // Subscribe to topics and send RPC commands
     subscribers_.push_back(nh.subscribe<std_msgs::Bool>(
         prefix + "/enable_autopilot",
         1,
@@ -37,10 +37,8 @@ TeleCarlaRpcClient::TeleCarlaRpcClient(ros::NodeHandle& nh, ros::NodeHandle& pnh
             ros::Time send_time = ros::Time::now();
             client_.call("set_enable_autopilot", msg->data, send_time.toSec());
             ROS_INFO_STREAM("Sent enable_autopilot with timestamp: " << send_time.toSec());
+            clientEnableAutopilotPublisher_.publish(msg);
         }));
-    ROS_INFO_STREAM("Subscribed to topic " << prefix + "/enable_autopilot -> set_enable_autopilot");
-
-    // Timestamp and send vehicle_control_manual_override message
     subscribers_.push_back(nh.subscribe<std_msgs::Bool>(
         prefix + "/vehicle_control_manual_override",
         1,
@@ -48,10 +46,8 @@ TeleCarlaRpcClient::TeleCarlaRpcClient(ros::NodeHandle& nh, ros::NodeHandle& pnh
             ros::Time send_time = ros::Time::now();
             client_.call("set_vehicle_control_manual_override", msg->data, send_time.toSec());
             ROS_INFO_STREAM("Sent vehicle_control_manual_override with timestamp: " << send_time.toSec());
+            clientManualOverridePublisher_.publish(msg);
         }));
-    ROS_INFO_STREAM("Subscribed to topic " << prefix + "/vehicle_control_manual_override -> set_vehicle_control_manual_override");
-
-    // Timestamp and send vehicle_control_cmd_manual message
     subscribers_.push_back(nh.subscribe<carla_msgs::CarlaEgoVehicleControl>(
         prefix + "/vehicle_control_cmd_manual",
         1,
@@ -59,10 +55,15 @@ TeleCarlaRpcClient::TeleCarlaRpcClient(ros::NodeHandle& nh, ros::NodeHandle& pnh
             ros::Time send_time = ros::Time::now();
             client_.call("set_vehicle_control_cmd_manual", msg->throttle, msg->steer, msg->brake, send_time.toSec());
             ROS_INFO_STREAM("Sent vehicle_control_cmd_manual with timestamp: " << send_time.toSec());
+            clientVehicleControlCmdPublisher_.publish(msg);
         }));
-    ROS_INFO_STREAM("Subscribed to topic " << prefix + "/vehicle_control_cmd_manual -> set_vehicle_control_cmd_manual");
 
     vehicleStatusPublisher_ = nh.advertise<carla_msgs::CarlaEgoVehicleStatus>(prefix + "/vehicle_status", 1);
+
+    // Publishers for client commands to the server
+    clientEnableAutopilotPublisher_ = nh.advertise<std_msgs::Bool>(prefix + "/client_enable_autopilot", 1);
+    clientManualOverridePublisher_ = nh.advertise<std_msgs::Bool>(prefix + "/client_vehicle_control_manual_override", 1);
+    clientVehicleControlCmdPublisher_ = nh.advertise<carla_msgs::CarlaEgoVehicleControl>(prefix + "/client_vehicle_control_cmd_manual", 1);
 }
 
 void TeleCarlaRpcClient::update()
